@@ -6,7 +6,7 @@ local fn = require("otter.tools.functions")
 
 local capabilities = vim.lsp.protocol.make_client_capabilities()
 
-local has_blink, blink = pcall(require, 'blink.cmp')
+local has_blink, blink = pcall(require, "blink.cmp")
 if has_blink then
   capabilities = blink.get_lsp_capabilities({}, true)
 end
@@ -40,7 +40,7 @@ otterls.start = function(main_nr, completion)
                 resolveProvider = true,
                 completionItem = {
                   labelDetailsSupport = true,
-                }
+                },
               }
             else
               completion_options = false
@@ -53,7 +53,7 @@ otterls.start = function(main_nr, completion)
                 declarationProvider = true,
                 signatureHelpProvider = {
                   triggerCharacters = { "(", "," },
-                  retriggerCharacters = {}
+                  retriggerCharacters = {},
                 },
                 typeDefinitionProvider = true,
                 renameProvider = true,
@@ -108,7 +108,7 @@ otterls.start = function(main_nr, completion)
           if not has_otter then
             -- if we don't have an otter for lang, there is nothing to be done
             handler(nil, nil, params.context)
-            return
+            return true, nil
           end
 
           local otter_nr = keeper.rafts[main_nr].buffers[lang]
@@ -159,12 +159,20 @@ otterls.start = function(main_nr, completion)
           -- send the request to the otter buffer
           -- modification of the response is done by our handler
           -- and then passed on to the default handler or user-defined handler
-          vim.lsp.buf_request(otter_nr, method, params, function(err, result, ctx)
-            if handlers[method] ~= nil then
-              err, result, ctx = handlers[method](err, result, ctx)
+          local client_response_ids, _cancel_func = vim.lsp.buf_request(
+            otter_nr,
+            method,
+            params,
+            function(err, result, context, config)
+              if handlers[method] ~= nil then
+                err, result, context, config = handlers[method](err, result, context, config)
+              end
+              handler(err, result, context, config)
             end
-            handler(err, result, ctx)
-          end)
+          )
+          if client_response_ids then
+            return true, nil
+          end
         end,
         --- Handle notify events
         --- @param method string one of vim.lsp.protocol.Methods
