@@ -1,6 +1,5 @@
 local M = {}
 
-
 ---@class OtterConfig
 local default_config = {
   lsp = {
@@ -21,13 +20,24 @@ local default_config = {
   buffers = {
     -- if set to true, the filetype of the otterbuffers will be set.
     -- otherwise only the autocommand of lspconfig that attaches
-    -- the language server will be executed without setting the filetype  
-    set_filetype = false,
+    -- the language server will be executed without setting the filetype
+    --- this setting is deprecated and will default to true in the future
+    set_filetype = true,
     -- write <path>.otter.<embedded language extension> files
     -- to disk on save of main buffer.
-    -- usefule for some linters that require actual files
+    -- usefule for some linters that require actual files.
     -- otter files are deleted on quit or main buffer close
     write_to_disk = false,
+    -- a table of preambles for each language. The key is the language and the value is a table of strings that will be written to the otter buffer starting on the first line.
+    preambles = {},
+    -- a table of postambles for each language. The key is the language and the value is a table of strings that will be written to the end of the otter buffer.
+    postambles = {},
+    -- A table of patterns to ignore for each language. The key is the language and the value is a lua match pattern to ignore.
+    -- lua patterns: https://www.lua.org/pil/20.2.html
+    ignore_pattern = {
+      -- ipython cell magic (lines starting with %) and shell commands (lines starting with !)
+      python = "^(%s*[%%!].*)",
+    },
   },
   -- list of characters that should be stripped from the beginning and end of the code chunks
   strip_wrapping_quote_characters = { "'", '"', "`" },
@@ -36,12 +46,11 @@ local default_config = {
   handle_leading_whitespace = true,
   -- mapping of filetypes to extensions for those not already included in otter.tools.extensions
   -- e.g. ["bash"] = "sh"
-  extensions = {
-  },
+  extensions = {},
   -- add event listeners for LSP events for debugging
   debug = false,
   verbose = { -- set to false to disable all verbose messages
-    no_code_found = false -- warn if otter.activate is called, but no injected code was found
+    no_code_found = false, -- warn if otter.activate is called, but no injected code was found
   },
 }
 

@@ -36,10 +36,16 @@ M.export_otter_as = keeper.export_otter_as
 ---@param completion boolean? Enable completion for otter buffers. Default: true
 ---@param diagnostics boolean? Enable diagnostics for otter buffers. Default: true
 ---@param tsquery string? Explicitly provide a treesitter query. If nil, the injections query for the current filetyepe will be used. See :h treesitter-language-injections.
-M.activate = function(languages, completion, diagnostics, tsquery)
+---@paramr preambles table? A table of preambles for each language. The key is the language and the value is a table of strings that will be written to the otter buffer starting on the first line.
+---@paramr postambles table? A table of postambles for each language. The key is the language and the value is a table of strings that will be written to the end of the otter buffer.
+---@paramr ignore_pattern table? A table of patterns to ignore for each language. The key is the languang and the value is a regular expression string to match patterns to ignore.
+M.activate = function(languages, completion, diagnostics, tsquery, preambles, postambles, ignore_pattern)
   languages = languages or vim.tbl_keys(require("otter.tools.extensions"))
   completion = completion ~= false
   diagnostics = diagnostics ~= false
+  preambles = preambles or config.cfg.buffers.preambles
+  postambles = postambles or config.cfg.buffers.postambles
+  ignore_pattern = ignore_pattern or config.cfg.buffers.ignore_pattern
   local main_nr = api.nvim_get_current_buf()
   local main_path = api.nvim_buf_get_name(main_nr)
   local main_lang = api.nvim_get_option_value("filetype", { buf = main_nr })
@@ -71,6 +77,9 @@ M.activate = function(languages, completion, diagnostics, tsquery)
     languages = {},
     buffers = {},
     paths = {},
+    preambles = {},
+    postambles = {},
+    ignore_pattern = {},
     otter_nr_to_lang = {},
     tsquery = tsquery,
     query = query,
@@ -84,19 +93,23 @@ M.activate = function(languages, completion, diagnostics, tsquery)
     diagnostics_group = nil,
   }
 
-  local all_code_chunks = keeper.extract_code_chunks(main_nr)
+  local code_chunks = keeper.extract_code_chunks(main_nr)
 
   ---@type string[]
   local found_languages = {}
   for _, lang in ipairs(languages) do
-    if all_code_chunks[lang] ~= nil and lang ~= main_lang then
+    if code_chunks[lang] ~= nil and lang ~= main_lang then
       table.insert(found_languages, lang)
     end
   end
   languages = found_languages
   if #languages == 0 then
     if config.cfg.verbose and config.cfg.verbose.no_code_found then
-      vim.notify_once("[otter] No code chunks found. Not activating. You can activate after having added code chunks with require'otter'.activate(). You can turn of this message by setting the option verbose.no_code_found to false", vim.log.levels.INFO, {})
+      vim.notify_once(
+        "[otter] No code chunks found. Not activating. You can activate after having added code chunks with require'otter'.activate(). You can turn of this message by setting the option verbose.no_code_found to false",
+        vim.log.levels.INFO,
+        {}
+      )
     end
     return
   end
@@ -119,42 +132,47 @@ M.activate = function(languages, completion, diagnostics, tsquery)
       api.nvim_set_option_value("swapfile", false, { buf = otter_nr })
       keeper.rafts[main_nr].buffers[lang] = otter_nr
       keeper.rafts[main_nr].paths[lang] = otter_path
+      keeper.rafts[main_nr].preambles[lang] = preambles[lang] or {}
+      keeper.rafts[main_nr].postambles[lang] = postambles[lang] or {}
+      keeper.rafts[main_nr].ignore_pattern[lang] = ignore_pattern[lang] or nil
       keeper.rafts[main_nr].otter_nr_to_lang[otter_nr] = lang
       table.insert(keeper.rafts[main_nr].languages, lang)
 
-      if config.cfg.buffers.write_to_disk then
-        -- closure to clean up this otter buffer and file
-        local cleanup = function(ev)
-          if api.nvim_buf_is_loaded(otter_nr) then
-            api.nvim_buf_delete(otter_nr, { force = true })
-            vim.fn.delete(otter_path)
-          end
+      -- closure to clean up this otter buffer and file
+      local cleanup = function(ev)
+        if api.nvim_buf_is_loaded(otter_nr) then
+          api.nvim_buf_delete(otter_nr, { force = true })
+          vim.fn.delete(otter_path)
         end
-        -- remove otter buffer when main buffer is closed
-        api.nvim_create_autocmd({ "BufDelete" }, {
-          buffer = main_nr,
-          group = api.nvim_create_augroup("OtterAutocloseOnMainDelete" .. otter_nr, {}),
-          callback = cleanup
-        })
-        -- Remove otter buffer before exiting, preventing unsaved otter
-        -- buffers from triggering a 'No write since last change' message.
-        -- Must be a separate autocmd that is not attached to buffer = main_nr
-        -- because the active buffer may be different from the main buffer when
-        -- exiting.
-        -- Must be ExitPre, not QuitPre, because QuitPre also triggers when a
-        -- window with the main buffer is closed, even though the
-        -- buffer may still be loaded in another window.
-        api.nvim_create_autocmd({ "ExitPre" }, {
-          pattern = "*",
-          group = api.nvim_create_augroup("OtterAutocloseOnQuit" .. otter_nr, {}),
-          callback = cleanup
-        })
+      end
+      -- remove otter buffer when main buffer is closed
+      api.nvim_create_autocmd({ "BufDelete" }, {
+        buffer = main_nr,
+        group = api.nvim_create_augroup("OtterAutocloseOnMainDelete" .. otter_nr, {}),
+        callback = cleanup,
+      })
+      -- Remove otter buffer before exiting, preventing unsaved otter
+      -- buffers from triggering a 'No write since last change' message.
+      -- Must be a separate autocmd that is not attached to buffer = main_nr
+      -- because the active buffer may be different from the main buffer when
+      -- exiting.
+      -- Must be ExitPre, not QuitPre, because QuitPre also triggers when a
+      -- window with the main buffer is closed, even though the
+      -- buffer may still be loaded in another window.
+      api.nvim_create_autocmd({ "ExitPre" }, {
+        pattern = "*",
+        group = api.nvim_create_augroup("OtterAutocloseOnQuit" .. otter_nr, {}),
+        callback = cleanup,
+      })
+
+      if config.cfg.buffers.write_to_disk then
         -- write to disk when main buffer is written
         api.nvim_create_autocmd("BufWritePost", {
           buffer = main_nr,
           group = api.nvim_create_augroup("OtterAutowrite" .. otter_nr, {}),
           callback = function(_, _)
             if api.nvim_buf_is_loaded(otter_nr) then
+              keeper.sync_raft(main_nr)
               api.nvim_buf_call(otter_nr, function()
                 vim.cmd("silent write! " .. otter_path)
               end)
@@ -162,7 +180,15 @@ M.activate = function(languages, completion, diagnostics, tsquery)
           end,
         })
       else
-        api.nvim_set_option_value("buftype", "nowrite", { buf = otter_nr })
+        -- prevent the otter buffer from being written to disk when
+        -- e.g. write all :wa is called
+        api.nvim_create_autocmd("BufWriteCmd", {
+          buffer = otter_nr,
+          group = api.nvim_create_augroup("OtterNoWrite" .. otter_nr, {}),
+          callback = function()
+            -- does nothing
+          end,
+        })
       end
     end
     ::continue::
@@ -189,11 +215,36 @@ M.activate = function(languages, completion, diagnostics, tsquery)
       end)
     end
 
+    if config.cfg.buffers.set_filetype == false then
+      vim.deprecate(
+        "otter.config.buffers.set_filetype = false",
+        "Use the default otter.nvim behavior instead. Otter now always sets the filetype to accomodate different ways of initializing language servers without conflicts.",
+        "3.1.0",
+        "otter.nvim",
+        false
+      )
+    end
+
     -- or if requested set the filetype
     if config.cfg.buffers.set_filetype then
       api.nvim_set_option_value("filetype", lang, { buf = otter_nr })
     else
-      local autocommands = api.nvim_get_autocmds({ group = "lspconfig", pattern = lang })
+      local function get_aucmds(group)
+        return api.nvim_get_autocmds({ group = group, pattern = lang })
+      end
+
+      local autocommands = {}
+      local groups = { "lspconfig", "nvim.lsp.enable" }
+
+      for _, group in ipairs(groups) do
+        local ok, cmds = pcall(get_aucmds, group)
+        if ok then
+          for _, cmd in ipairs(cmds) do
+            table.insert(autocommands, cmd)
+          end
+        end
+      end
+
       for _, command in ipairs(autocommands) do
         local opt = { buf = otter_nr }
         command.callback(opt)
@@ -237,14 +288,12 @@ M.activate = function(languages, completion, diagnostics, tsquery)
     vim.notify_once("[otter] activation of otter-ls failed", vim.log.levels.WARN, {})
   end
 
-
   -- debugging
   if config.cfg.debug == true then
     -- listen to lsp requests and notifications
     vim.api.nvim_create_autocmd("LspNotify", {
       ---@param _ {buf: number, data: {client_id: number, method: string, params: any}}
-      callback = function(_)
-      end,
+      callback = function(_) end,
     })
 
     vim.api.nvim_create_autocmd("LspRequest", {
@@ -259,7 +308,6 @@ M.activate = function(languages, completion, diagnostics, tsquery)
     })
   end
 end
-
 
 ---Deactivate the current buffer by removing otter buffers and clearing diagnostics
 ---@param completion boolean | nil

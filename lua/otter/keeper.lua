@@ -15,6 +15,9 @@ local cfg = require("otter.config").cfg
 ---@field languages string[]
 ---@field buffers table<string, integer>
 ---@field paths table<string, string>
+---@field preambles table<string, string[]>
+---@field postambles table<string, string[]>
+---@field ignore_pattern table<string, string>
 ---@field otter_nr_to_lang table<integer, string>
 ---@field tsquery string?
 ---@field query vim.treesitter.Query
@@ -42,6 +45,10 @@ for key, _ in pairs(extensions) do
   table.insert(injectable_languages, key)
 end
 
+local function filter_lang(s)
+  return s:gsub("^[%s%p]+", "")
+end
+
 ---determine the language of the current node
 ---@param main_nr integer bufnr of the main buffer
 ---@param name string name of the capture
@@ -57,13 +64,15 @@ local function determine_language(main_nr, name, node, metadata, current_languag
     if injection_language ~= "comment" then
       -- don't use comment as language,
       -- comments with language inside are handled in injection.combined
-      return injection_language
+      return filter_lang(injection_language)
     end
   elseif metadata["injection.combined"] == true then
     -- chunks where the injected language is specified in the text of a comment
     local lang_capture = metadata[2]["text"]
     if lang_capture ~= nil then
-      return lang_capture
+      -- NOTE: this could be more elegant
+      -- remove leading whitespace and comment characters erroneously captured as part of the langauge
+      return filter_lang(lang_capture)
     end
   elseif name == "_lang" or name == "injection.language" then
     -- chunks where the name of the injected language is dynamic
@@ -120,6 +129,7 @@ keeper.extract_code_chunks = function(main_nr, lang, exclude_eval_false, range_s
   local query = keeper.rafts[main_nr].query
   local parser = keeper.rafts[main_nr].parser
   local tree = parser:parse()
+  assert(tree, "[otter] Treesitter failed to parse buffer " .. main_nr)
   local root = tree[1]:root()
 
   ---@type table<string, CodeChunk[]>
@@ -133,9 +143,9 @@ keeper.extract_code_chunks = function(main_nr, lang, exclude_eval_false, range_s
         local text
         lang_capture = determine_language(main_nr, name, node, metadata, lang_capture)
         if
-            lang_capture
-            and (name == "content" or name == "injection.content")
-            and (lang == nil or lang_capture == lang)
+          lang_capture
+          and (name == "content" or name == "injection.content")
+          and (lang == nil or lang_capture == lang)
         then
           -- the actual code content
           text = ts.get_node_text(node, main_nr, { metadata = metadata[id] })
@@ -149,7 +159,11 @@ keeper.extract_code_chunks = function(main_nr, lang, exclude_eval_false, range_s
           ---@type integer
           ---@diagnostic disable-next-line: assign-type-mismatch
           local start_row, start_col, end_row, end_col = node:range()
-          if range_start_row ~= nil and range_end_row ~= nil and ((start_row >= range_end_row and range_end_row > 0) or end_row < range_start_row) then
+          if
+            range_start_row ~= nil
+            and range_end_row ~= nil
+            and ((start_row >= range_end_row and range_end_row > 0) or end_row < range_start_row)
+          then
             goto continue
           end
           local leading_offset
@@ -373,7 +387,6 @@ keeper.sync_raft = function(main_nr, language)
     return "success"
   end
 
-
   ---@param callback function
   ---@return SyncResult
   ---
@@ -382,21 +395,19 @@ keeper.sync_raft = function(main_nr, language)
   --- in which it is not necessary to sync
   --- and can be delayed until the textlock is released.
   --- The lsp request should still be valid
+  --- NOTE: We may be able to get rid of this entirely in nvim v0.11
   local function do_with_maybe_texlock(callback)
-    local texlock_err_msg = 'Vim(normal):E5556: API call: E565: Not allowed to change text or change window'
+    local texlock_err_msg = "E565: Not allowed to change text or change window"
     local success, result = pcall(callback)
     if success then
       return "success"
     end
 
-    vim.notify_once("[otter.nvim] Hi there! You triggered an LSP request that is routed through otter.nvim while textlock is active. We would like to fix this, but need to find the exact form of the error message to match against. Please be so kind and open an issue with how you triggered this and the error object below:", vim.log.levels.WARN)
-    vim.notify_once(vim.inspect(result), vim.log.levels.WARN)
-
-    if result == texlock_err_msg then
+    result = tostring(result)
+    if result:match(texlock_err_msg) then
       vim.schedule(callback)
       return "textlock_active"
     else
-      error(result)
       return "error"
     end
   end
@@ -423,17 +434,34 @@ keeper.sync_raft = function(main_nr, language)
         -- create list with empty lines the length of the buffer
         local ls = fn.empty_lines(nmax)
 
+        -- set preamble lines
+        local preamble = keeper.rafts[main_nr].preambles[lang]
+        for i, l in ipairs(preamble) do
+          table.remove(ls, i)
+          table.insert(ls, i, l)
+        end
+
         -- collect language lines
+        -- are allowed to overwrite the preamble
+        -- apply ignore_pattern filtering on read
+        local pattern = keeper.rafts[main_nr].ignore_pattern[lang]
         for _, t in ipairs(code_chunks) do
           local start_index = t.range["from"][1]
           for i, l in ipairs(t.text) do
             local index = start_index + i
-            table.remove(ls, index)
-            table.insert(ls, index, l)
+            if pattern == nil or not string.match(l, pattern) then
+              ls[index] = l
+            end
           end
         end
 
-        -- replace language lines
+        -- set postamble lines
+        local postamble = keeper.rafts[main_nr].postambles[lang]
+        for _, l in ipairs(postamble) do
+          table.insert(ls, l)
+        end
+
+        -- set code lines
         result = do_with_maybe_texlock(function()
           api.nvim_buf_set_lines(otter_nr, 0, -1, false, ls)
         end)

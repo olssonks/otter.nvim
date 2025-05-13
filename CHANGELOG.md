@@ -1,5 +1,67 @@
 # Changelog
 
+## [2.11.2](https://github.com/jmbuhr/otter.nvim/compare/v2.11.1...v2.11.2) (2025-04-08)
+
+
+### Bug Fixes
+
+* make otter buffers writable and always close on ExitPre. fixes [#228](https://github.com/jmbuhr/otter.nvim/issues/228) ([6332f4c](https://github.com/jmbuhr/otter.nvim/commit/6332f4c6fe05a98ddcadb772d5065f0498b4f3a0))
+* overwrite BufWriteCmd for otterbuffers, preventing them from being written to disk unless config.buffers.write_to_disk is set to true ([d63eeb8](https://github.com/jmbuhr/otter.nvim/commit/d63eeb8bcc7267ff5b32e2160f52edefb36a79e4))
+
+## [2.11.1](https://github.com/jmbuhr/otter.nvim/compare/v2.11.0...v2.11.1) (2025-04-04)
+
+
+### Bug Fixes
+
+* fix [#227](https://github.com/jmbuhr/otter.nvim/issues/227) and format with stylua. Also closes [#230](https://github.com/jmbuhr/otter.nvim/issues/230) ([b830d6c](https://github.com/jmbuhr/otter.nvim/commit/b830d6c76cf21b97159770f913d3ff28027c46a1))
+
+## [2.11.0](https://github.com/jmbuhr/otter.nvim/compare/v2.10.0...v2.11.0) (2025-03-26)
+
+
+### Features
+
+* add postamble support ([61868fc](https://github.com/jmbuhr/otter.nvim/commit/61868fce68c489c073a822763ed6fe62560e2060))
+
+## [2.10.0](https://github.com/jmbuhr/otter.nvim/compare/v2.9.0...v2.10.0) (2025-03-24)
+
+
+### Features
+
+* provide usercommands for common actions ([6227b9a](https://github.com/jmbuhr/otter.nvim/commit/6227b9a27de47708350231129140c6e4d26e025f))
+
+## [2.9.0](https://github.com/jmbuhr/otter.nvim/compare/v2.8.0...v2.9.0) (2025-03-17)
+
+
+### Features
+
+* add gleam to extensions ([#223](https://github.com/jmbuhr/otter.nvim/issues/223)) ([474629b](https://github.com/jmbuhr/otter.nvim/commit/474629b1b40d712ce9798ad96132670f6159469c))
+
+
+### Bug Fixes
+
+* match error message for textlock and catch. fixes [#178](https://github.com/jmbuhr/otter.nvim/issues/178) ([#219](https://github.com/jmbuhr/otter.nvim/issues/219)) ([e37053d](https://github.com/jmbuhr/otter.nvim/commit/e37053d2c6a17463e705483122eee04d41e3d4af))
+
+## [2.8.0](https://github.com/jmbuhr/otter.nvim/compare/v2.7.0...v2.8.0) (2025-03-03)
+
+
+### Features
+
+* add ignore_pattern option to filter language lines ([#217](https://github.com/jmbuhr/otter.nvim/issues/217)) ([4ac831e](https://github.com/jmbuhr/otter.nvim/commit/4ac831e579952acebf53fb746309c9131a56233c))
+
+## [2.7.0](https://github.com/jmbuhr/otter.nvim/compare/v2.6.1...v2.7.0) (2025-02-28)
+
+
+### Features
+
+* add fish to extensions ([#214](https://github.com/jmbuhr/otter.nvim/issues/214)) ([213d1f7](https://github.com/jmbuhr/otter.nvim/commit/213d1f7a47be788f430099a110456a06167ab0f4))
+* preamble ([#212](https://github.com/jmbuhr/otter.nvim/issues/212)) ([b2e2d6a](https://github.com/jmbuhr/otter.nvim/commit/b2e2d6aa3829db4540b0cf372243bb448edc344a))
+
+
+### Bug Fixes
+
+* filter special characters from language string captures. fixes [#211](https://github.com/jmbuhr/otter.nvim/issues/211) ([085b2b0](https://github.com/jmbuhr/otter.nvim/commit/085b2b0c815103047f8db18a0f71a561462606b5))
+* make lspconfig augroup a warning instead of error ([21f042f](https://github.com/jmbuhr/otter.nvim/commit/21f042f4d1a9ff4788634ad76a10033eed13c7f2))
+
 ## [2.6.1](https://github.com/jmbuhr/otter.nvim/compare/v2.6.0...v2.6.1) (2025-02-03)
 
 
